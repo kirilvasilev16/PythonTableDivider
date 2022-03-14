@@ -8,9 +8,13 @@ from utilities.divider import Divider
 
 
 def main():
-    train_csv = "input/titanic_encoded_data.csv"
-    train_data = pd.read_csv(train_csv, index_col='PassengerId')
-    y_column = 'Survived'
+    # train_csv = "input/titanic_encoded_data.csv"
+    # train_data = pd.read_csv(train_csv, index_col='PassengerId')
+    # y_column = 'Survived'
+
+    train_csv = "input/houses_encoded_data.csv"
+    train_data = pd.read_csv(train_csv, index_col='Id')
+    y_column = 'SalePrice'
 
     # Initialise divider
     dv = Divider(train_data, y_column)
@@ -18,7 +22,7 @@ def main():
     # Apply division
     # dv.divide(strategy="correlation", path='output')
     # dv.divide(strategy = "random", path='output')
-    # dv.divide(strategy = "random", path='output', onehot=True)
+    # dv.divide(strategy = "random", path='output2', onehot=True)
     # dv.divide(strategy='random', path='output', overlap=True)
     dv.divide(strategy='shrink', path='output')
 
@@ -37,6 +41,7 @@ def main():
 
 
 if __name__ == '__main__':
-    for i in range(100):
-        print(i)
-        main()
+    main()
+    # for i in range(100):
+    #     print(i)
+    #     main()

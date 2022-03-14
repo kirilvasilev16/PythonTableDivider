@@ -91,6 +91,11 @@ class Divider:
 
                 # Set recursed table to have reduced element count
                 recurred_table = unique_recursed_table
+            else:
+                input_table.loc[:, FK_name] = mylist
+                input_table = input_table.groupby(input_table.index.names + [FK_name]).mean()
+                input_table = input_table.drop(picked_columns, axis=1)
+
 
             # Add the connection to a list
             self.connections.append(('table' + str(level) + str(base_index), FK_name,
