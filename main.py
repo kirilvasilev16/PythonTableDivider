@@ -27,12 +27,13 @@ def main():
     # One hot parameter is inclusive
     # dv.divide(strategy = "random", onehot=4)
     # dv.divide(strategy = "random", overlap_r=0.2)
-
-    # Apply all division strategies
-    dv.divide(strategy='random', overlap_r=0.2)
+    # dv.divide(strategy="random", overlap_r=0.5, onehot=4)
 
     # Verify correctness
-    dv.verify()
+    # dv.verify()
+
+    # Apply all division strategies
+    dv.divide_all(overlap_r=0.5, onehot=4)
 
 
 if __name__ == '__main__':

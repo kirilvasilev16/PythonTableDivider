@@ -32,14 +32,12 @@ class Divider:
         self.index = 0
         self.path = path
 
-    def random_shrink(self, input_table, level, overlap_r=0):
+    def random_shrink(self, input_table, level):
         """
         Recursively cluster randomly the columns and apply shrinking of the new tables
 
         input_table - table to apply the clustering on
         level - level of recursion
-        onehot - parameter for applying onehot encoding
-        overlap_r - ratio of columns to overlap
         """
 
         input_table = input_table.copy()
@@ -106,13 +104,9 @@ class Divider:
             if len(recurred_table.columns) == 1:
                 self.result.append((level + 1, self.index, recurred_table))
                 continue
-            elif overlap_r > 0:
-                # Check if you need to apply overlapping
-                picked_column = recurred_table.sample(n=int(len(recurred_table.columns) * overlap_r), axis='columns').columns
-                input_table[picked_column] = recurred_table[picked_column].copy()
 
             # Apply clustering recursively on smaller table
-            self.random_shrink(recurred_table, level + 1, overlap_r=overlap_r)
+            self.random_shrink(recurred_table, level + 1)
 
         # Reset the index and set FK columns as normal columns
         input_table = input_table.reset_index()
@@ -198,9 +192,9 @@ class Divider:
                 continue
             elif overlap_r > 0:
                 # Check if you need to apply overlapping
-                picked_column = recurred_table.sample(n=int(len(recurred_table.columns) * overlap_r),
+                picked_column = recurred_table.sample(n=int(np.floor(len(recurred_table.columns) * overlap_r)),
                                                       axis='columns').columns
-                input_table[picked_column] = recurred_table[picked_column].copy()
+                input_table[picked_column] = recurred_table[picked_column].values
 
             # Apply clustering recursively on smaller table
             self.random_same_pk_fk(recurred_table, level + 1, onehot=onehot, overlap_r=overlap_r)
@@ -312,7 +306,7 @@ class Divider:
             self.random_same_pk_fk(input_table, 0, onehot=onehot, overlap_r=overlap_r)
         elif strategy == 'shrink':
             input_table = self.input_table.groupby(self.input_table.index.names + [self.important_column]).mean()
-            self.random_shrink(input_table, 0, overlap_r=overlap_r)
+            self.random_shrink(input_table, 0)
         elif strategy == 'correlation':
             self.correlation(self.input_table, self.important_column, 0)
 
@@ -445,11 +439,6 @@ class Divider:
         print("Random with shrinking")
         self.path = path + "/shrink"
         self.divide("shrink")
-        self.verify()
-
-        print("Random with shrinking and overlap")
-        self.path = path + "/shrink_overlap"
-        self.divide("shrink", overlap_r=overlap_r)
         self.verify()
 
         print("Correlation based")
