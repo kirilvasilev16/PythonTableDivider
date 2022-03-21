@@ -8,36 +8,31 @@ from utilities.divider import Divider
 
 
 def main():
-    # train_csv = "input/titanic_encoded_data.csv"
-    # train_data = pd.read_csv(train_csv, index_col='PassengerId')
-    # y_column = 'Survived'
+    train_csv = "input/titanic_encoded_data.csv"
+    train_data = pd.read_csv(train_csv, index_col='PassengerId')
+    y_column = 'Survived'
 
-    train_csv = "input/houses_encoded_data.csv"
-    train_data = pd.read_csv(train_csv, index_col='Id')
-    y_column = 'SalePrice'
+    # train_csv = "input/houses_encoded_data.csv"
+    # train_data = pd.read_csv(train_csv, index_col='Id')
+    # y_column = 'SalePrice'
 
     # Initialise divider
-    dv = Divider(train_data, y_column)
+    dv = Divider(train_data, y_column, path='output')
 
     # Apply division
-    # dv.divide(strategy="correlation", path='output')
-    # dv.divide(strategy = "random", path='output')
-    # dv.divide(strategy = "random", path='output2', onehot=True)
-    # dv.divide(strategy='random', path='output', overlap=True)
-    dv.divide(strategy='shrink', path='output')
+    # dv.divide(strategy="correlation")
+    # dv.divide(strategy="random")
+    # dv.divide(strategy='shrink')
 
-    # Read table names and respective primary keys
-    read_tables = dv.read_tables(path='output')
-    # Read table contents
-    read_tables_contents = dv.read_tables_contents(read_tables=read_tables)
-    # Read table connections
-    read_tables_connections = dv.read_tables_connections(path='output')
+    # One hot parameter is inclusive
+    # dv.divide(strategy = "random", onehot=4)
+    # dv.divide(strategy = "random", overlap_r=0.2)
 
-    # Verify correct table division by joining all tables and comparing to original
-    # The method can only be used if oneHotEncoding and column overlaps are not used
-    print(dv.verify_correctness(train_data=train_data,
-                                read_tables_contents=read_tables_contents,
-                                read_connections=read_tables_connections))
+    # Apply all division strategies
+    dv.divide(strategy='random', overlap_r=0.2)
+
+    # Verify correctness
+    dv.verify()
 
 
 if __name__ == '__main__':

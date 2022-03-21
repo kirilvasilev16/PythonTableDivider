@@ -1,6 +1,8 @@
 import os
 import random
 import json
+import shutil
+
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
@@ -15,29 +17,29 @@ class Divider:
     Table divider class
     """
 
-    def __init__(self, input_table, important_column):
+    def __init__(self, input_table, important_column, path):
         """
         Constructor for divider
 
         input_table - table to apply division on
         important_column - y_column used for predictions
+        path - name of output folder to save data
         """
         self.result = []
         self.input_table = input_table.copy()
         self.important_column = important_column
         self.connections = []
         self.index = 0
+        self.path = path
 
-    def get_result(self):
+    def random_shrink(self, input_table, level, overlap_r=0):
         """
-        Returns the result of calculations
-        """
-        return self.result
+        Recursively cluster randomly the columns and apply shrinking of the new tables
 
-    def random_shrink(self, input_table, level, onehot=False, overlap=False):
-        """
-        Recursively cluster randomly the columns
+        input_table - table to apply the clustering on
         level - level of recursion
+        onehot - parameter for applying onehot encoding
+        overlap_r - ratio of columns to overlap
         """
 
         input_table = input_table.copy()
@@ -68,8 +70,8 @@ class Divider:
                 picked_columns = input_table.columns
 
                 # Set new column names
-            PK_name = 'PK' + str(level + 1) + str(self.index)
-            FK_name = 'FK' + str(level + 1) + str(self.index)
+            PK_name = 'PK_' + str(level + 1) + '_' + str(self.index)
+            FK_name = 'FK_' + str(level + 1) + '_' + str(self.index)
 
             # Add new PK
             recurred_table = input_table[picked_columns]
@@ -77,20 +79,20 @@ class Divider:
             recurred_table.set_index(PK_name, inplace=True)
 
             # Check if table size can be reduced
-            unique_recursed_table = recurred_table.drop_duplicates()
-            if len(input_table.columns) + len(input_table.index.names) > 2 and len(unique_recursed_table) < len(
+            unique_recurred_table = recurred_table.drop_duplicates()
+            if len(input_table.columns) + len(input_table.index.names) > 2 and len(unique_recurred_table) < len(
                     recurred_table):
                 # Add new FK and remove columns associated with it
                 old_index = list(input_table.index.names)
                 input_table = (
-                    input_table.reset_index().merge(unique_recursed_table.reset_index(), on=list(picked_columns.values),
+                    input_table.reset_index().merge(unique_recurred_table.reset_index(), on=list(picked_columns.values),
                                                     how='left')
                         .rename(columns={PK_name: FK_name})
                         .groupby(old_index + [FK_name]).mean()
                         .drop(picked_columns, axis=1))
 
                 # Set recursed table to have reduced element count
-                recurred_table = unique_recursed_table
+                recurred_table = unique_recurred_table
             else:
                 input_table.loc[:, FK_name] = mylist
                 input_table = input_table.groupby(input_table.index.names + [FK_name]).mean()
@@ -98,47 +100,33 @@ class Divider:
 
 
             # Add the connection to a list
-            self.connections.append(('table' + str(level) + str(base_index), FK_name,
-                                     'table' + str(level + 1) + str(self.index), PK_name))
+            self.connections.append(('table_' + str(level) + '_' + str(base_index), FK_name,
+                                     'table_' + str(level + 1) + '_' + str(self.index), PK_name))
 
-            # Append new FK table to result list
             if len(recurred_table.columns) == 1:
-                # Check if you need to apply oneHotEncoding
-                if onehot is True and len(recurred_table[recurred_table.columns[0]].unique()) < 7:
-                    oneHotEncoder = OneHotEncoder()
-                    encoded_col = pd.DataFrame(
-                        oneHotEncoder.fit_transform(recurred_table[[recurred_table.columns[0]]]).toarray())
-
-                    # Concatenate the 2 tables
-                    recurred_table = pd.concat([recurred_table.reset_index(), encoded_col], axis=1, copy=False,
-                                               join='inner')
-
-                    # Readd the index column
-                    recurred_table.loc[:, PK_name] = mylist
-                    recurred_table.set_index(PK_name, inplace=True)
-
-                # Append single-column table to result
                 self.result.append((level + 1, self.index, recurred_table))
                 continue
-            elif overlap is True:
-                # Perform overlaping with probability
-                p = 0.3
-                if np.random.rand() <= p:
-                    picked_column = recurred_table.sample(n=1, axis='columns').columns
-                    input_table[picked_column] = recurred_table[picked_column].copy()
+            elif overlap_r > 0:
+                # Check if you need to apply overlapping
+                picked_column = recurred_table.sample(n=int(len(recurred_table.columns) * overlap_r), axis='columns').columns
+                input_table[picked_column] = recurred_table[picked_column].copy()
 
             # Apply clustering recursively on smaller table
-            self.random_shrink(recurred_table, level + 1, onehot=onehot, overlap=overlap)
+            self.random_shrink(recurred_table, level + 1, overlap_r=overlap_r)
 
         # Reset the index and set FK columns as normal columns
         input_table = input_table.reset_index()
         input_table.set_index(base_index_cols, inplace=True)
         self.result.append((level, base_index, input_table))
 
-    def random_same_pk_fk(self, input_table, level, onehot=False, overlap=False):
+    def random_same_pk_fk(self, input_table, level, onehot=0, overlap_r=0):
         """
         Recursively cluster randomly the columns
+
+        input_table - table to apply the clustering on
         level - level of recursion
+        onehot - parameter for applying onehot encoding
+        overlap_r - ratio of columns to overlap
         """
 
         input_table = input_table.copy()
@@ -169,8 +157,8 @@ class Divider:
                 picked_columns = input_table.columns
 
                 # Set new column names
-            PK_name = 'PK' + str(level + 1) + str(self.index)
-            FK_name = 'FK' + str(level + 1) + str(self.index)
+            PK_name = 'PK_' + str(level + 1) + '_' + str(self.index)
+            FK_name = 'FK_' + str(level + 1) + '_' + str(self.index)
 
             # Add new PK
             recurred_table = input_table[picked_columns]
@@ -183,20 +171,23 @@ class Divider:
             input_table = input_table.drop(picked_columns, axis=1)
 
             # Add the connection to a list
-            self.connections.append(('table' + str(level) + str(base_index), FK_name,
-                                     'table' + str(level + 1) + str(self.index), PK_name))
+            self.connections.append(('table_' + str(level) + '_' + str(base_index), FK_name,
+                                     'table_' + str(level + 1) + '_' + str(self.index), PK_name))
 
             # Append new FK table to result list
             if len(recurred_table.columns) == 1:
                 # Check if you need to apply oneHotEncoding
-                if onehot is True and len(recurred_table[recurred_table.columns[0]].unique()) < 7:
+                if onehot > 0 and len(recurred_table[recurred_table.columns[0]].unique()) <= onehot:
                     oneHotEncoder = OneHotEncoder()
                     encoded_col = pd.DataFrame(
                         oneHotEncoder.fit_transform(recurred_table[[recurred_table.columns[0]]]).toarray())
-
+                    # Rename columns to have prefix
+                    oneHotEncoded_column_name = recurred_table.columns[0]
+                    encoded_col = encoded_col.add_prefix(oneHotEncoded_column_name)
                     # Concatenate the 2 tables
                     recurred_table = pd.concat([recurred_table.reset_index(), encoded_col], axis=1, copy=False,
                                                join='inner')
+                    recurred_table.drop([oneHotEncoded_column_name], axis=1, inplace=True)
 
                     # Readd the index column
                     recurred_table.loc[:, PK_name] = mylist
@@ -205,15 +196,14 @@ class Divider:
                 # Append single-column table to result
                 self.result.append((level + 1, self.index, recurred_table))
                 continue
-            elif overlap is True:
-                # Perform overlaping with probability
-                p = 0.3
-                if np.random.rand() <= p:
-                    picked_column = recurred_table.sample(n=1, axis='columns').columns
-                    input_table[picked_column] = recurred_table[picked_column].copy()
+            elif overlap_r > 0:
+                # Check if you need to apply overlapping
+                picked_column = recurred_table.sample(n=int(len(recurred_table.columns) * overlap_r),
+                                                      axis='columns').columns
+                input_table[picked_column] = recurred_table[picked_column].copy()
 
             # Apply clustering recursively on smaller table
-            self.random_same_pk_fk(recurred_table, level + 1, onehot=onehot, overlap=overlap)
+            self.random_same_pk_fk(recurred_table, level + 1, onehot=onehot, overlap_r=overlap_r)
 
         # Reset the index and set FK columns as normal columns
         input_table = input_table.reset_index()
@@ -223,8 +213,10 @@ class Divider:
     def correlation(self, input_table, important_column, level):
         """
         Recursively cluster most correlated columns to an "important_column"
+
         important_column - colum of interest, most likely to be Y
         input_table - table to apply the clustering on
+        level - level of recursion
         """
 
         input_table = input_table.copy()
@@ -271,8 +263,8 @@ class Divider:
                 continue
 
             # Set new column names
-            PK_name = 'PK' + str(level + 1) + str(self.index)
-            FK_name = 'FK' + str(level + 1) + str(self.index)
+            PK_name = 'PK_' + str(level + 1) + '_' + str(self.index)
+            FK_name = 'FK_' + str(level + 1) + '_' + str(self.index)
 
             # Add new PK
             recurred_table = input_table[corr_columns]
@@ -286,8 +278,8 @@ class Divider:
             corr = corr.drop(corr_columns, axis=1)
 
             # Add the connection to a list
-            self.connections.append(('table' + str(level) + str(base_index), FK_name,
-                                     'table' + str(level + 1) + str(self.index), PK_name))
+            self.connections.append(('table_' + str(level) + '_' + str(base_index), FK_name,
+                                     'table_' + str(level + 1) + '_' + str(self.index), PK_name))
 
             # Apply clustering recursively
             self.correlation(recurred_table, new_important, level + 1)
@@ -297,26 +289,30 @@ class Divider:
         input_table.set_index(base_index_cols, inplace=True)
         self.result.append((level, base_index, input_table))
 
-    def divide(self, strategy, path, onehot=False, overlap=False):
+    def divide(self, strategy, onehot=False, overlap_r=0):
         """
         Function used to divide the table
+
         strategy - strategy of division
-        path - path to save output
+        onehot - parameter for applying onehot encoding
+        overlap_p - probability of randomly overlapping columns
+        overlap_r - ratio of columns to overlap
         """
 
-        # Create output folder
-        os.makedirs(path, exist_ok=True)
+        # Delete the output folder and make a new one
+        shutil.rmtree(self.path, ignore_errors=True)
+        os.makedirs(self.path, exist_ok=True)
 
         # Initialise fresh result and connections lists
-        self.__init__(self.input_table, self.important_column)
+        self.__init__(self.input_table, self.important_column, self.path)
 
         # Pick strategy
         if strategy == 'random':
             input_table = self.input_table.groupby(self.input_table.index.names + [self.important_column]).mean()
-            self.random_same_pk_fk(input_table, 0, onehot=onehot, overlap=overlap)
+            self.random_same_pk_fk(input_table, 0, onehot=onehot, overlap_r=overlap_r)
         elif strategy == 'shrink':
             input_table = self.input_table.groupby(self.input_table.index.names + [self.important_column]).mean()
-            self.random_shrink(input_table, 0, onehot=onehot, overlap=overlap)
+            self.random_shrink(input_table, 0, overlap_r=overlap_r)
         elif strategy == 'correlation':
             self.correlation(self.input_table, self.important_column, 0)
 
@@ -327,7 +323,7 @@ class Divider:
         print('Level, Index, Primary Key, Columns')
         for (el, col, table) in self.result:
             print(el, " ", col, " ", table.index.names, " ", table.columns, "\n")
-            table.to_csv(path + '/table' + str(el) + str(col) + '.csv')
+            table.to_csv(self.path + '/table_' + str(el) + '_' + str(col) + '.csv')
 
         # Initialise set of tuples in the form (table name, PK column)
         all_tables = []
@@ -335,21 +331,21 @@ class Divider:
         # Iterate over tables and fill data
         for (el, col, table) in self.result:
             # Add tables to set
-            all_tables.append((str('table' + str(el) + str(col)), table.index.names))
+            all_tables.append((str('table_' + str(el) + '_' + str(col)), table.index.names))
 
         # Save connections to file
-        np.savetxt(path + "/connections.csv", self.connections, delimiter=',', fmt='%s')
+        np.savetxt(self.path + "/connections.csv", self.connections, delimiter=',', fmt='%s')
 
         # Save tables names with their PK to file
         all_tables = json.dumps(all_tables)
-        with open(path + '/tables.json', 'w') as outfile:
+        with open(self.path + '/tables.json', 'w') as outfile:
             json.dump(all_tables, outfile)
 
-    def read_tables(self, path):
+    def read_tables(self):
         """
         Read data from tables - returns array of [table name, Primary key]
         """
-        with open(path + '/tables.json') as json_file:
+        with open(self.path + '/tables.json') as json_file:
             tables = json.loads(json.load(json_file))
         return tables
 
@@ -359,20 +355,21 @@ class Divider:
         """
         read_tables_content = dict()
         for [table, pk] in read_tables:
-            read_tables_content[table] = pd.read_csv('output/' + table + '.csv', index_col=pk)
+            read_tables_content[table] = pd.read_csv(self.path + '/' + table + '.csv', index_col=pk)
         return read_tables_content
 
-    def read_tables_connections(self, path):
+    def read_tables_connections(self):
         """
         Read table connections
 
         returns list with members in the form ((table_name1, PK1), (table_name2, FK1))
         """
         read_connections = map(lambda x: ((x[0], x[1]), (x[2], x[3])),
-                               genfromtxt(path + '/connections.csv', delimiter=',', dtype='str'))
+                               genfromtxt(self.path + '/connections.csv', delimiter=',', dtype='str'))
         return list(read_connections)
 
-    def verify_correctness(self, train_data, read_tables_contents, read_connections):
+    @staticmethod
+    def verify_correctness(train_data, read_tables_contents, read_connections):
         """
         Join all tables and compare to original table to verify that the result will be the same in the end
 
@@ -398,3 +395,66 @@ class Divider:
 
         return joined_table.reset_index().sort_index().sort_index(axis=1).equals(
             train_data.reset_index().sort_index().sort_index(axis=1))
+
+    def verify(self):
+        """
+        Calls all the verification methods to verify correctness
+        """
+
+        # Read table names and respective primary keys
+        read_tables = self.read_tables()
+        # Read table contents
+        read_tables_contents = self.read_tables_contents(read_tables=read_tables)
+        # Read table connections
+        read_tables_connections = self.read_tables_connections()
+
+        # Verify correct table division by joining all tables and comparing to original
+        # The method can only be used if oneHotEncoding and column overlaps are not used
+        print(self.verify_correctness(train_data=self.input_table,
+                                      read_tables_contents=read_tables_contents,
+                                      read_connections=read_tables_connections))
+
+    def divide_all(self, overlap_r, onehot):
+        """
+        Apply all division strategies
+
+        overlap_p - probability of randomly overlapping columns
+        overlap_r - ratio of columns to overlap
+        """
+        path = self.path
+        print("Random")
+        self.path = path + "/random"
+        self.divide("random")
+        self.verify()
+
+        print("Random with onehot")
+        self.path = path + "/random_onehot"
+        self.divide("random", onehot=onehot)
+        self.verify()
+
+        print("Random with overlap")
+        self.path = path + "/random_overlap"
+        self.divide("random", overlap_r=overlap_r)
+        self.verify()
+
+        print("Random with onehot and overlap")
+        self.path = path + "/random_onehot_overlap"
+        self.divide("random", onehot=onehot, overlap_r=overlap_r)
+        self.verify()
+
+        print("Random with shrinking")
+        self.path = path + "/shrink"
+        self.divide("shrink")
+        self.verify()
+
+        print("Random with shrinking and overlap")
+        self.path = path + "/shrink_overlap"
+        self.divide("shrink", overlap_r=overlap_r)
+        self.verify()
+
+        print("Correlation based")
+        self.path = path + "/correlation"
+        self.divide("correlation")
+        self.verify()
+
+        self.path = path
