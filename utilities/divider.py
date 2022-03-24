@@ -86,14 +86,14 @@ class Divider:
                     input_table.reset_index().merge(unique_recurred_table.reset_index(), on=list(picked_columns.values),
                                                     how='left')
                         .rename(columns={PK_name: FK_name})
-                        .groupby(old_index + [FK_name]).mean()
+                        .groupby(old_index + [FK_name]).first()
                         .drop(picked_columns, axis=1))
 
                 # Set recursed table to have reduced element count
                 recurred_table = unique_recurred_table
             else:
                 input_table.loc[:, FK_name] = mylist
-                input_table = input_table.groupby(input_table.index.names + [FK_name]).mean()
+                input_table = input_table.groupby(input_table.index.names + [FK_name]).first()
                 input_table = input_table.drop(picked_columns, axis=1)
 
 
@@ -161,7 +161,7 @@ class Divider:
 
             # Add new FK and remove columns associated with it
             input_table.loc[:, FK_name] = mylist
-            input_table = input_table.groupby(input_table.index.names + [FK_name]).mean()
+            input_table = input_table.groupby(input_table.index.names + [FK_name]).first()
             input_table = input_table.drop(picked_columns, axis=1)
 
             # Add the connection to a list
@@ -267,7 +267,7 @@ class Divider:
 
             # Add new FK and remove columns associated with it
             input_table.loc[:, FK_name] = mylist
-            input_table = input_table.groupby(input_table.index.names + [FK_name]).mean()
+            input_table = input_table.groupby(input_table.index.names + [FK_name]).first()
             input_table = input_table.drop(corr_columns, axis=1)
             corr = corr.drop(corr_columns, axis=1)
 
@@ -302,10 +302,10 @@ class Divider:
 
         # Pick strategy
         if strategy == 'random':
-            input_table = self.input_table.groupby(self.input_table.index.names + [self.important_column]).mean()
+            input_table = self.input_table.groupby(self.input_table.index.names + [self.important_column]).first()
             self.random_same_pk_fk(input_table, 0, onehot=onehot, overlap_r=overlap_r)
         elif strategy == 'shrink':
-            input_table = self.input_table.groupby(self.input_table.index.names + [self.important_column]).mean()
+            input_table = self.input_table.groupby(self.input_table.index.names + [self.important_column]).first()
             self.random_shrink(input_table, 0)
         elif strategy == 'correlation':
             self.correlation(self.input_table, self.important_column, 0)
@@ -377,7 +377,7 @@ class Divider:
         old_index = list(joined_table.index.names)
 
         joined_table = (joined_table.reset_index().merge(read_tables_contents[table2], left_on=index1, right_on=index2)
-                        .groupby(old_index).mean()
+                        .groupby(old_index).first()
                         .drop([index1], axis=1))
 
         for i in range(len(read_connections) - 1):
@@ -387,7 +387,7 @@ class Divider:
 
             joined_table = (
                 joined_table.reset_index().merge(read_tables_contents[table2], left_on=index1, right_on=index2)
-                .groupby(old_index).mean()
+                .groupby(old_index).first()
                 .drop([index1], axis=1))
 
         return joined_table.reset_index().sort_index().sort_index(axis=1).equals(
