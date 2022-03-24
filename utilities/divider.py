@@ -32,191 +32,6 @@ class Divider:
         self.index = 0
         self.path = path
 
-    def random_shrink(self, input_table, level):
-        """
-        Recursively cluster randomly the columns and apply shrinking of the new tables
-
-        input_table - table to apply the clustering on
-        level - level of recursion
-        """
-
-        input_table = input_table.copy()
-
-        # Return if no columns
-        if len(input_table.columns) <= 1:
-            return
-
-        # Set up base table variables
-        base_index = self.index
-        self.index += 1
-        base_index_cols = input_table.index.names
-
-        # Apply clustering for every cluster of columns
-        while len(input_table.columns) > 0:
-
-            # Randomly shuffle
-            self.index += 1
-            mylist = np.array(range(0, len(input_table)))
-            random.shuffle(mylist)
-
-            # Randomly pick n_splits columns
-            picked_columns = []
-            if len(input_table.columns) > 1:
-                picked_columns = input_table.sample(n=np.random.randint(1, len(input_table.columns)),
-                                                    axis='columns').columns
-            else:
-                picked_columns = input_table.columns
-
-                # Set new column names
-            pk_name = 'PK_' + str(level + 1) + '_' + str(self.index)
-            fk_name = 'FK_' + str(level + 1) + '_' + str(self.index)
-
-            # Add new PK
-            recurred_table = input_table[picked_columns]
-            recurred_table.loc[:, pk_name] = mylist
-            recurred_table.set_index(pk_name, inplace=True)
-
-            # Check if table size can be reduced
-            unique_recurred_table = recurred_table.drop_duplicates()
-            if len(input_table.columns) + len(input_table.index.names) > 2 and len(unique_recurred_table) < len(
-                    recurred_table):
-                # Add new FK and remove columns associated with it
-                old_index = list(input_table.index.names)
-                input_table = (
-                    input_table.reset_index().merge(unique_recurred_table.reset_index(), on=list(picked_columns.values),
-                                                    how='left')
-                        .rename(columns={pk_name: fk_name})
-                        .groupby(old_index + [fk_name]).first()
-                        .drop(picked_columns, axis=1))
-
-                # Set recursed table to have reduced element count
-                recurred_table = unique_recurred_table
-            else:
-                input_table.loc[:, fk_name] = mylist
-                input_table = input_table.groupby(input_table.index.names + [fk_name]).first()
-                input_table = input_table.drop(picked_columns, axis=1)
-
-            # Add the connection to a list
-            self.connections.append(('table_' + str(level) + '_' + str(base_index), fk_name,
-                                     'table_' + str(level + 1) + '_' + str(self.index), pk_name))
-
-            if len(recurred_table.columns) == 1:
-                self.result.append((level + 1, self.index, recurred_table))
-                continue
-
-            # Apply clustering recursively on smaller table
-            self.random_shrink(recurred_table, level + 1)
-
-        # Reset the index and set FK columns as normal columns
-        input_table = input_table.reset_index()
-        input_table.set_index(base_index_cols, inplace=True)
-        self.result.append((level, base_index, input_table))
-
-    def random_same_pk_fk(self, input_table, level, onehot=0, overlap_r=0):
-        """
-        Recursively cluster randomly the columns
-
-        input_table - table to apply the clustering on
-        level - level of recursion
-        onehot - parameter for applying onehot encoding
-        overlap_r - ratio of columns to overlap
-        """
-
-        input_table = input_table.copy()
-
-        # Return if no columns
-        if len(input_table.columns) <= 1:
-            return
-
-        # Set up base table variables
-        base_index = self.index
-        self.index += 1
-        base_index_cols = input_table.index.names
-
-        # Apply clustering for every cluster of columns
-        while len(input_table.columns) > 0:
-
-            # Randomly shuffle
-            self.index += 1
-            mylist = np.array(range(0, len(input_table)))
-            random.shuffle(mylist)
-
-            # Randomly pick n_splits columns
-            picked_columns = []
-            if len(input_table.columns) > 1:
-                picked_columns = input_table.sample(n=np.random.randint(1, len(input_table.columns)),
-                                                    axis='columns').columns
-            else:
-                picked_columns = input_table.columns
-
-            # Set new column names
-            pk_name = 'PK_' + str(level + 1) + '_' + str(self.index)
-            fk_name = 'FK_' + str(level + 1) + '_' + str(self.index)
-
-            # Add new PK
-            recurred_table = input_table[picked_columns]
-            recurred_table.loc[:, pk_name] = mylist
-            recurred_table.set_index(pk_name, inplace=True)
-
-            # Add new FK and remove columns associated with it
-            input_table.loc[:, fk_name] = mylist
-            input_table = input_table.groupby(input_table.index.names + [fk_name]).first()
-            input_table = input_table.drop(picked_columns, axis=1)
-
-            # Add the connection to a list
-            self.connections.append(('table_' + str(level) + '_' + str(base_index), fk_name,
-                                     'table_' + str(level + 1) + '_' + str(self.index), pk_name))
-
-            # Append new FK table to result list
-            if len(recurred_table.columns) == 1:
-                # Check if you need to apply oneHotEncoding
-                if onehot > 0 and len(recurred_table[recurred_table.columns[0]].unique()) <= onehot:
-                    # Apply the onehot encoding
-                    recurred_table = self.apply_onehot_encoding(pk_name, mylist, recurred_table)
-
-                # Append single-column table to result
-                self.result.append((level + 1, self.index, recurred_table))
-
-            # Check if you need to apply overlapping and apply it
-            elif overlap_r > 0:
-                picked_column = recurred_table.sample(n=int(np.floor(len(recurred_table.columns) * overlap_r)),
-                                                      axis='columns').columns
-                input_table[picked_column] = recurred_table[picked_column].values
-
-            # Apply clustering recursively on smaller table
-            self.random_same_pk_fk(recurred_table, level + 1, onehot=onehot, overlap_r=overlap_r)
-
-        # Reset the index and set FK columns as normal columns
-        input_table = input_table.reset_index()
-        input_table.set_index(base_index_cols, inplace=True)
-        self.result.append((level, base_index, input_table))
-
-    @staticmethod
-    def apply_onehot_encoding(pk_name, mylist, recurred_table):
-        """
-        Applies onehot encoding on the first column of a table
-
-        pk_name - Primary key column name
-        mylist - list of values used as PK in the recurred table index
-        recurred_table - the table to apply the encoding on
-
-        returns recurred table with onehot encoding applied on it
-        """
-        oneHotEncoder = OneHotEncoder()
-        encoded_col = pd.DataFrame(
-            oneHotEncoder.fit_transform(recurred_table[[recurred_table.columns[0]]]).toarray())
-        # Rename columns to have prefix
-        oneHotEncoded_column_name = recurred_table.columns[0]
-        encoded_col = encoded_col.add_prefix(oneHotEncoded_column_name)
-        # Concatenate the 2 tables
-        recurred_table = pd.concat([recurred_table.reset_index(), encoded_col], axis=1, copy=False,
-                                   join='inner')
-        recurred_table.drop([oneHotEncoded_column_name], axis=1, inplace=True)
-        # Readd the index column
-        recurred_table.loc[:, pk_name] = mylist
-        recurred_table.set_index(pk_name, inplace=True)
-        return recurred_table
-
     def correlation(self, input_table, important_column, level):
         """
         Recursively cluster most correlated columns to an "important_column"
@@ -269,14 +84,8 @@ class Divider:
             if len(corr_columns) == 0:
                 continue
 
-            # Set new column names
-            pk_name = 'PK_' + str(level + 1) + '_' + str(self.index)
-            fk_name = 'FK_' + str(level + 1) + '_' + str(self.index)
-
-            # Add new PK
-            recurred_table = input_table[corr_columns]
-            recurred_table.loc[:, pk_name] = mylist
-            recurred_table.set_index(pk_name, inplace=True)
+            fk_name, mylist, corr_columns, pk_name, recurred_table = self.create_recurred(input_table, level, mylist,
+                                                                                          corr_columns)
 
             # Add new FK and remove columns associated with it
             input_table.loc[:, fk_name] = mylist
@@ -295,6 +104,203 @@ class Divider:
         input_table = input_table.reset_index()
         input_table.set_index(base_index_cols, inplace=True)
         self.result.append((level, base_index, input_table))
+
+    def random_shrink(self, input_table, level):
+        """
+        Recursively cluster randomly the columns and apply shrinking of the new tables
+
+        input_table - table to apply the clustering on
+        level - level of recursion
+        """
+
+        input_table = input_table.copy()
+
+        # Return if no columns
+        if len(input_table.columns) <= 1:
+            return
+
+        # Set up base table variables
+        base_index = self.index
+        self.index += 1
+        base_index_cols = input_table.index.names
+
+        # Apply clustering for every cluster of columns
+        while len(input_table.columns) > 0:
+
+            # Initialize recurred table and corresponding fields
+            fk_name, mylist, picked_columns, pk_name, recurred_table = self.sample_and_create_recurred(input_table,
+                                                                                                       level)
+
+            # Check if table size can be reduced
+            unique_recurred_table = recurred_table.drop_duplicates()
+            if len(input_table.columns) + len(input_table.index.names) > 2 and len(unique_recurred_table) < len(
+                    recurred_table):
+                # Add new FK and remove columns associated with it
+                old_index = list(input_table.index.names)
+                input_table = (
+                    input_table.reset_index().merge(unique_recurred_table.reset_index(), on=list(picked_columns.values),
+                                                    how='left')
+                        .rename(columns={pk_name: fk_name})
+                        .groupby(old_index + [fk_name]).first()
+                        .drop(picked_columns, axis=1))
+
+                # Set recurred table to have reduced element count
+                recurred_table = unique_recurred_table
+            else:
+                input_table.loc[:, fk_name] = mylist
+                input_table = input_table.groupby(input_table.index.names + [fk_name]).first()
+                input_table = input_table.drop(picked_columns, axis=1)
+
+            # Add the connection to a list
+            self.connections.append(('table_' + str(level) + '_' + str(base_index), fk_name,
+                                     'table_' + str(level + 1) + '_' + str(self.index), pk_name))
+
+            if len(recurred_table.columns) == 1:
+                self.result.append((level + 1, self.index, recurred_table))
+                continue
+
+            # Apply clustering recursively on smaller table
+            self.random_shrink(recurred_table, level + 1)
+
+        # Reset the index and set FK columns as normal columns
+        input_table = input_table.reset_index()
+        input_table.set_index(base_index_cols, inplace=True)
+        self.result.append((level, base_index, input_table))
+
+    def random_same_pk_fk(self, input_table, level, onehot=0, overlap_r=0):
+        """
+        Recursively cluster randomly the columns
+
+        input_table - table to apply the clustering on
+        level - level of recursion
+        onehot - parameter for applying onehot encoding
+        overlap_r - ratio of columns to overlap
+        """
+
+        input_table = input_table.copy()
+
+        # Return if no columns
+        if len(input_table.columns) <= 1:
+            return
+
+        # Set up base table variables
+        base_index = self.index
+        self.index += 1
+        base_index_cols = input_table.index.names
+
+        # Apply clustering for every cluster of columns
+        while len(input_table.columns) > 0:
+
+            # Initialize recurred table and corresponding fields
+            fk_name, mylist, picked_columns, pk_name, recurred_table = self.sample_and_create_recurred(input_table,
+                                                                                                       level)
+
+            # Add new FK and remove columns associated with it
+            input_table.loc[:, fk_name] = mylist
+            input_table = input_table.groupby(input_table.index.names + [fk_name]).first()
+            input_table = input_table.drop(picked_columns, axis=1)
+
+            # Add the connection to a list
+            self.connections.append(('table_' + str(level) + '_' + str(base_index), fk_name,
+                                     'table_' + str(level + 1) + '_' + str(self.index), pk_name))
+
+            # Append new FK table to result list
+            if len(recurred_table.columns) == 1:
+                # Check if you need to apply oneHotEncoding
+                if onehot > 0 and len(recurred_table[recurred_table.columns[0]].unique()) <= onehot:
+                    # Apply the onehot encoding
+                    recurred_table = self.apply_onehot_encoding(pk_name, mylist, recurred_table)
+
+                # Append single-column table to result
+                self.result.append((level + 1, self.index, recurred_table))
+                continue
+
+            # Check if you need to apply overlapping and apply it
+            elif overlap_r > 0:
+                picked_column = recurred_table.sample(n=int(np.floor(len(recurred_table.columns) * overlap_r)),
+                                                      axis='columns').columns
+                input_table[picked_column] = recurred_table[picked_column].values
+
+            # Apply clustering recursively on smaller table
+            self.random_same_pk_fk(recurred_table, level + 1, onehot=onehot, overlap_r=overlap_r)
+
+        # Reset the index and set FK columns as normal columns
+        input_table = input_table.reset_index()
+        input_table.set_index(base_index_cols, inplace=True)
+        self.result.append((level, base_index, input_table))
+
+    def sample_and_create_recurred(self, input_table, level):
+        """
+        Initialize recurred table by sampling columns from input table
+        Initialize PK and FK fields as well
+
+        input_table - table to sample from
+        level - level of recursion
+
+        returns foreign key name, PK column values, sampled columns, PK column name, the recurred table
+        """
+
+        # Randomly shuffle
+        self.index += 1
+        mylist = np.array(range(0, len(input_table)))
+        random.shuffle(mylist)
+
+        # Randomly pick n_splits columns
+        picked_columns = []
+        if len(input_table.columns) > 1:
+            picked_columns = input_table.sample(n=np.random.randint(1, len(input_table.columns)),
+                                                axis='columns').columns
+        else:
+            picked_columns = input_table.columns
+
+        return self.create_recurred(input_table, level, mylist, picked_columns)
+
+    def create_recurred(self, input_table, level, mylist, picked_columns):
+        """
+        Create the recurred table
+
+        input_table - table to sample from
+        level - level of recursion
+        mylist - PK values
+        picked_columns - columns sampled for the recurred table
+
+        returns foreign key name, PK column values, sampled columns, PK column name, the recurred table
+        """
+
+        # Set new column names
+        pk_name = 'PK_' + str(level + 1) + '_' + str(self.index)
+        fk_name = 'FK_' + str(level + 1) + '_' + str(self.index)
+        # Add new PK
+        recurred_table = input_table[picked_columns]
+        recurred_table.loc[:, pk_name] = mylist
+        recurred_table.set_index(pk_name, inplace=True)
+        return fk_name, mylist, picked_columns, pk_name, recurred_table
+
+    @staticmethod
+    def apply_onehot_encoding(pk_name, mylist, recurred_table):
+        """
+        Applies onehot encoding on the first column of a table
+
+        pk_name - Primary key column name
+        mylist - list of values used as PK in the recurred table index
+        recurred_table - the table to apply the encoding on
+
+        returns recurred table with onehot encoding applied on it
+        """
+        oneHotEncoder = OneHotEncoder()
+        encoded_col = pd.DataFrame(
+            oneHotEncoder.fit_transform(recurred_table[[recurred_table.columns[0]]]).toarray())
+        # Rename columns to have prefix
+        oneHotEncoded_column_name = recurred_table.columns[0]
+        encoded_col = encoded_col.add_prefix(oneHotEncoded_column_name)
+        # Concatenate the 2 tables
+        recurred_table = pd.concat([recurred_table.reset_index(), encoded_col], axis=1, copy=False,
+                                   join='inner')
+        recurred_table.drop([oneHotEncoded_column_name], axis=1, inplace=True)
+        # Readd the index column
+        recurred_table.loc[:, pk_name] = mylist
+        recurred_table.set_index(pk_name, inplace=True)
+        return recurred_table
 
     def divide(self, strategy, onehot=False, overlap_r=0):
         """
@@ -411,8 +417,8 @@ class Divider:
 
             joined_table = (
                 joined_table.reset_index().merge(read_tables_contents[table2], left_on=index1, right_on=index2)
-                .groupby(old_index).first()
-                .drop([index1], axis=1))
+                    .groupby(old_index).first()
+                    .drop([index1], axis=1))
 
         return joined_table.reset_index().sort_index().sort_index(axis=1).equals(
             train_data.reset_index().sort_index().sort_index(axis=1))
