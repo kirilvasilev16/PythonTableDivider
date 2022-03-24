@@ -68,13 +68,13 @@ class Divider:
                 picked_columns = input_table.columns
 
                 # Set new column names
-            PK_name = 'PK_' + str(level + 1) + '_' + str(self.index)
-            FK_name = 'FK_' + str(level + 1) + '_' + str(self.index)
+            pk_name = 'PK_' + str(level + 1) + '_' + str(self.index)
+            fk_name = 'FK_' + str(level + 1) + '_' + str(self.index)
 
             # Add new PK
             recurred_table = input_table[picked_columns]
-            recurred_table.loc[:, PK_name] = mylist
-            recurred_table.set_index(PK_name, inplace=True)
+            recurred_table.loc[:, pk_name] = mylist
+            recurred_table.set_index(pk_name, inplace=True)
 
             # Check if table size can be reduced
             unique_recurred_table = recurred_table.drop_duplicates()
@@ -85,21 +85,20 @@ class Divider:
                 input_table = (
                     input_table.reset_index().merge(unique_recurred_table.reset_index(), on=list(picked_columns.values),
                                                     how='left')
-                        .rename(columns={PK_name: FK_name})
-                        .groupby(old_index + [FK_name]).first()
+                        .rename(columns={pk_name: fk_name})
+                        .groupby(old_index + [fk_name]).first()
                         .drop(picked_columns, axis=1))
 
                 # Set recursed table to have reduced element count
                 recurred_table = unique_recurred_table
             else:
-                input_table.loc[:, FK_name] = mylist
-                input_table = input_table.groupby(input_table.index.names + [FK_name]).first()
+                input_table.loc[:, fk_name] = mylist
+                input_table = input_table.groupby(input_table.index.names + [fk_name]).first()
                 input_table = input_table.drop(picked_columns, axis=1)
 
-
             # Add the connection to a list
-            self.connections.append(('table_' + str(level) + '_' + str(base_index), FK_name,
-                                     'table_' + str(level + 1) + '_' + str(self.index), PK_name))
+            self.connections.append(('table_' + str(level) + '_' + str(base_index), fk_name,
+                                     'table_' + str(level + 1) + '_' + str(self.index), pk_name))
 
             if len(recurred_table.columns) == 1:
                 self.result.append((level + 1, self.index, recurred_table))
@@ -150,48 +149,36 @@ class Divider:
             else:
                 picked_columns = input_table.columns
 
-                # Set new column names
-            PK_name = 'PK_' + str(level + 1) + '_' + str(self.index)
-            FK_name = 'FK_' + str(level + 1) + '_' + str(self.index)
+            # Set new column names
+            pk_name = 'PK_' + str(level + 1) + '_' + str(self.index)
+            fk_name = 'FK_' + str(level + 1) + '_' + str(self.index)
 
             # Add new PK
             recurred_table = input_table[picked_columns]
-            recurred_table.loc[:, PK_name] = mylist
-            recurred_table.set_index(PK_name, inplace=True)
+            recurred_table.loc[:, pk_name] = mylist
+            recurred_table.set_index(pk_name, inplace=True)
 
             # Add new FK and remove columns associated with it
-            input_table.loc[:, FK_name] = mylist
-            input_table = input_table.groupby(input_table.index.names + [FK_name]).first()
+            input_table.loc[:, fk_name] = mylist
+            input_table = input_table.groupby(input_table.index.names + [fk_name]).first()
             input_table = input_table.drop(picked_columns, axis=1)
 
             # Add the connection to a list
-            self.connections.append(('table_' + str(level) + '_' + str(base_index), FK_name,
-                                     'table_' + str(level + 1) + '_' + str(self.index), PK_name))
+            self.connections.append(('table_' + str(level) + '_' + str(base_index), fk_name,
+                                     'table_' + str(level + 1) + '_' + str(self.index), pk_name))
 
             # Append new FK table to result list
             if len(recurred_table.columns) == 1:
                 # Check if you need to apply oneHotEncoding
                 if onehot > 0 and len(recurred_table[recurred_table.columns[0]].unique()) <= onehot:
-                    oneHotEncoder = OneHotEncoder()
-                    encoded_col = pd.DataFrame(
-                        oneHotEncoder.fit_transform(recurred_table[[recurred_table.columns[0]]]).toarray())
-                    # Rename columns to have prefix
-                    oneHotEncoded_column_name = recurred_table.columns[0]
-                    encoded_col = encoded_col.add_prefix(oneHotEncoded_column_name)
-                    # Concatenate the 2 tables
-                    recurred_table = pd.concat([recurred_table.reset_index(), encoded_col], axis=1, copy=False,
-                                               join='inner')
-                    recurred_table.drop([oneHotEncoded_column_name], axis=1, inplace=True)
-
-                    # Readd the index column
-                    recurred_table.loc[:, PK_name] = mylist
-                    recurred_table.set_index(PK_name, inplace=True)
+                    # Apply the onehot encoding
+                    recurred_table = self.apply_onehot_encoding(pk_name, mylist, recurred_table)
 
                 # Append single-column table to result
                 self.result.append((level + 1, self.index, recurred_table))
-                continue
+
+            # Check if you need to apply overlapping and apply it
             elif overlap_r > 0:
-                # Check if you need to apply overlapping
                 picked_column = recurred_table.sample(n=int(np.floor(len(recurred_table.columns) * overlap_r)),
                                                       axis='columns').columns
                 input_table[picked_column] = recurred_table[picked_column].values
@@ -204,12 +191,38 @@ class Divider:
         input_table.set_index(base_index_cols, inplace=True)
         self.result.append((level, base_index, input_table))
 
+    @staticmethod
+    def apply_onehot_encoding(pk_name, mylist, recurred_table):
+        """
+        Applies onehot encoding on the first column of a table
+
+        pk_name - Primary key column name
+        mylist - list of values used as PK in the recurred table index
+        recurred_table - the table to apply the encoding on
+
+        returns recurred table with onehot encoding applied on it
+        """
+        oneHotEncoder = OneHotEncoder()
+        encoded_col = pd.DataFrame(
+            oneHotEncoder.fit_transform(recurred_table[[recurred_table.columns[0]]]).toarray())
+        # Rename columns to have prefix
+        oneHotEncoded_column_name = recurred_table.columns[0]
+        encoded_col = encoded_col.add_prefix(oneHotEncoded_column_name)
+        # Concatenate the 2 tables
+        recurred_table = pd.concat([recurred_table.reset_index(), encoded_col], axis=1, copy=False,
+                                   join='inner')
+        recurred_table.drop([oneHotEncoded_column_name], axis=1, inplace=True)
+        # Readd the index column
+        recurred_table.loc[:, pk_name] = mylist
+        recurred_table.set_index(pk_name, inplace=True)
+        return recurred_table
+
     def correlation(self, input_table, important_column, level):
         """
         Recursively cluster most correlated columns to an "important_column"
 
-        important_column - colum of interest, most likely to be Y
         input_table - table to apply the clustering on
+        important_column - colum of interest, most likely to be Y
         level - level of recursion
         """
 
@@ -257,23 +270,23 @@ class Divider:
                 continue
 
             # Set new column names
-            PK_name = 'PK_' + str(level + 1) + '_' + str(self.index)
-            FK_name = 'FK_' + str(level + 1) + '_' + str(self.index)
+            pk_name = 'PK_' + str(level + 1) + '_' + str(self.index)
+            fk_name = 'FK_' + str(level + 1) + '_' + str(self.index)
 
             # Add new PK
             recurred_table = input_table[corr_columns]
-            recurred_table.loc[:, PK_name] = mylist
-            recurred_table.set_index(PK_name, inplace=True)
+            recurred_table.loc[:, pk_name] = mylist
+            recurred_table.set_index(pk_name, inplace=True)
 
             # Add new FK and remove columns associated with it
-            input_table.loc[:, FK_name] = mylist
-            input_table = input_table.groupby(input_table.index.names + [FK_name]).first()
+            input_table.loc[:, fk_name] = mylist
+            input_table = input_table.groupby(input_table.index.names + [fk_name]).first()
             input_table = input_table.drop(corr_columns, axis=1)
             corr = corr.drop(corr_columns, axis=1)
 
             # Add the connection to a list
-            self.connections.append(('table_' + str(level) + '_' + str(base_index), FK_name,
-                                     'table_' + str(level + 1) + '_' + str(self.index), PK_name))
+            self.connections.append(('table_' + str(level) + '_' + str(base_index), fk_name,
+                                     'table_' + str(level + 1) + '_' + str(self.index), pk_name))
 
             # Apply clustering recursively
             self.correlation(recurred_table, new_important, level + 1)
@@ -289,7 +302,6 @@ class Divider:
 
         strategy - strategy of division
         onehot - parameter for applying onehot encoding
-        overlap_p - probability of randomly overlapping columns
         overlap_r - ratio of columns to overlap
         """
 
@@ -340,7 +352,9 @@ class Divider:
 
     def read_tables(self):
         """
-        Read data from tables - returns array of [table name, Primary key]
+        Read data from tables
+
+        returns array of [table name, Primary key]
         """
         with open(self.path + '/tables.json') as json_file:
             tables = json.loads(json.load(json_file))
@@ -349,6 +363,8 @@ class Divider:
     def read_tables_contents(self, read_tables):
         """
         Read the actual data from the tables
+
+        returns the contents of the tab;es
         """
         read_tables_content = dict()
         for [table, pk] in read_tables:
@@ -371,6 +387,14 @@ class Divider:
         Join all tables and compare to original table to verify that the result will be the same in the end
 
         The method can only be used if oneHotEncoding and column overlaps are not used
+
+        train_data - input table
+        read_tables_contents - divided tables read from the output files
+        read_connections - PK-FK connections between tables
+
+        Method must always return True for vanilla random, correlation and random with shrinking strategies
+        Method may return True or False for rest
+        Method should be called after every division strategy
         """
         ((table1, index1), (table2, index2)) = read_connections[0]
         joined_table = read_tables_contents[table1]
@@ -398,10 +422,6 @@ class Divider:
         Calls all the verification methods to verify correctness
         In case all leaf tables are joined together in one table, and it is identical to the input table, returns True
         Otherwise returns False as joined table contain different data
-
-        Method must always return True for vanilla random, correlation and random with shrinking strategies
-        Method may return True or False for rest
-        Method should be called after every division strategy
         """
 
         # Read table names and respective primary keys
