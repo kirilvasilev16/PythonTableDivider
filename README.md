@@ -62,3 +62,16 @@ If `divide_all` method is used, in the specified `output` folder, multiple subfo
  - Multiple files named `table_X_Y.csv`, where `X` and `Y` are integers. Each file will contain a single table, generated from the table divider. The tables can be used together with `tables.json` and `connections.csv` to apply join operations on them;
  
 If `divide` method is used, in the specified `output` folder, no subfolders will be created and the aforementioned files will simply be put there.
+
+### Strategies
+  During every vertical split, a primary and a foreign key columns are created, so that it is possible to later join the tables together:
+  - Division based on correlation to attribute of interest
+    - We pick a column of importance and calculate its correlation to the other columns. The most correlated columns to it are placed in a separate table, then the second most correlated, ... and finally the least correlated. A column of importance is picked for each of the new tables and the algorithm continuous to recursively divide the table vertically.
+  - Randomized division (vanilla random)
+    - During execution, the input table is randomly split vertically into separate tables and each of the new tables is disjoint to the others (they share no common columns). Next, each of the smaller tables is recursively divided again until we are left with tables, which contain a single PK column and a single column from the initial input table. Those we call leaf tables.
+  - Randomized division with shrinking of table sizes 
+    - The division is conducted similarly to the vanilla random division with the difference that we check whether it is possible to remove duplicating entries from the recurred tables and therefore shrink their sizes. This allows us to reduce the table size and use the fact that we can rely on PK-FK relation when joining tables.
+  - Randomized division with onehot encoding for leaf table columns
+    - The division is conducted similarly to the vanilla random division with the difference that the leaf tables can have onehot encoding applied to their single column if: the number of unique values in that column is at most `onehot`.
+  - Randomized division with column overlapping over leaf tables
+    - The division is conducted similarly to the vanilla random division with the difference that it is possible to have multiple columns appearing in multiple of the smaller tables. When we apply the table division, we randomly sample columns from the initial table and we return `overlap_r` ratio of them to it. That means we sample with replacement. As a result, the same columns can get sampled again and appear in multiple of the child tables.
