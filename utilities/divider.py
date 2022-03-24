@@ -335,6 +335,9 @@ class Divider:
         with open(self.path + '/tables.json', 'w') as outfile:
             json.dump(all_tables, outfile)
 
+        # Verify correctness
+        self.verify()
+
     def read_tables(self):
         """
         Read data from tables - returns array of [table name, Primary key]
@@ -393,6 +396,12 @@ class Divider:
     def verify(self):
         """
         Calls all the verification methods to verify correctness
+        In case all leaf tables are joined together in one table, and it is identical to the input table, returns True
+        Otherwise returns False as joined table contain different data
+
+        Method must always return True for vanilla random, correlation and random with shrinking strategies
+        Method may return True or False for rest
+        Method should be called after every division strategy
         """
 
         # Read table names and respective primary keys
@@ -419,31 +428,25 @@ class Divider:
         print("Random")
         self.path = path + "/random"
         self.divide("random")
-        self.verify()
 
         print("Random with onehot")
         self.path = path + "/random_onehot"
         self.divide("random", onehot=onehot)
-        self.verify()
 
         print("Random with overlap")
         self.path = path + "/random_overlap"
         self.divide("random", overlap_r=overlap_r)
-        self.verify()
 
         print("Random with onehot and overlap")
         self.path = path + "/random_onehot_overlap"
         self.divide("random", onehot=onehot, overlap_r=overlap_r)
-        self.verify()
 
         print("Random with shrinking")
         self.path = path + "/shrink"
         self.divide("shrink")
-        self.verify()
 
         print("Correlation based")
         self.path = path + "/correlation"
         self.divide("correlation")
-        self.verify()
 
         self.path = path

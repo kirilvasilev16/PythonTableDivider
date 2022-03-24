@@ -1,9 +1,4 @@
-import numpy as np
 import pandas as pd
-
-import seaborn as sns
-import matplotlib.pyplot as plt
-
 from utilities.divider import Divider
 
 
@@ -26,11 +21,8 @@ def main():
 
     # One hot parameter is inclusive
     # dv.divide(strategy = "random", onehot=4)
-    # dv.divide(strategy = "random", overlap_r=0.2)
+    # dv.divide(strategy = "random", overlap_r=0.5)
     # dv.divide(strategy="random", overlap_r=0.5, onehot=4)
-
-    # Verify correctness
-    # dv.verify()
 
     # Apply all division strategies
     dv.divide_all(overlap_r=0.5, onehot=4)
@@ -38,6 +30,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    # for i in range(100):
-    #     print(i)
-    #     main()
