@@ -1,5 +1,8 @@
 # PythonTableDivider
 
+[![Python 3.8](https://img.shields.io/badge/python-3.8.2-blue.svg)](https://www.python.org/downloads/release/python-380/)
+
+
 The project contains the code to vertically split a table given the next strategies:
   - Division based on correlation to attribute of interest
   - Randomized division (vanilla random)
@@ -54,6 +57,9 @@ dv.divide_all(overlap_r=0.5, onehot=4)
 During division, output will be printed in the console, containing the following:
 - Table description, where every line is a separate table  with unique index and specified PK column and normal columns. Level of recursion is also shown for every table division and can be used to observe the propagation of the algorithm
 - After every division is complete, either True or False will be printed. `True` **must** always be printed if correlation, vanilla random or random with shrinking strategies are used. Otherwise, either True or False are valid outputs.
+
+### Input 
+One single csv file. 
 
 ### Output
 If `divide_all` method is used, in the specified `output` folder, multiple subfolders will be created and each will contain the following files:
