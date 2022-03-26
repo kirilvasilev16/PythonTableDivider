@@ -207,7 +207,8 @@ class Divider:
             # Append new FK table to result list
             if len(recurred_table.columns) == 1:
                 # Check if you need to apply oneHotEncoding
-                if onehot > 0 and len(recurred_table[recurred_table.columns[0]].unique()) <= onehot:
+                if onehot > 0 and len(recurred_table[recurred_table.columns[0]].unique()) <= onehot\
+                        and recurred_table[recurred_table.columns[0]].isnull().values.any() is False:
                     # Apply the onehot encoding
                     recurred_table = self.apply_onehot_encoding(pk_name, mylist, recurred_table)
 
