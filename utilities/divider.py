@@ -88,9 +88,7 @@ class Divider:
                                                                                           corr_columns)
 
             # Add new FK and remove columns associated with it
-            input_table.loc[:, fk_name] = mylist
-            input_table = input_table.groupby(input_table.index.names + [fk_name]).first()
-            input_table = input_table.drop(corr_columns, axis=1)
+            input_table = self.replace_recurred_with_fk(fk_name, input_table, mylist, corr_columns)
             corr = corr.drop(corr_columns, axis=1)
 
             # Add the connection to a list
@@ -101,6 +99,17 @@ class Divider:
             self.correlation(recurred_table, new_important, level + 1)
 
         # Reset the index and set FK columns as normal columns
+        self.revert_input_table_index(base_index, base_index_cols, input_table, level)
+
+    def revert_input_table_index(self, base_index, base_index_cols, input_table, level):
+        """
+        Revert the input_table index to previous state
+
+        base_index - identifier of table
+        base_index_cols - previous index of input_table
+        input_table - table to revert index on
+        level - level of recursion
+        """
         input_table = input_table.reset_index()
         input_table.set_index(base_index_cols, inplace=True)
         self.result.append((level, base_index, input_table))
@@ -147,9 +156,7 @@ class Divider:
                 # Set recurred table to have reduced element count
                 recurred_table = unique_recurred_table
             else:
-                input_table.loc[:, fk_name] = mylist
-                input_table = input_table.groupby(input_table.index.names + [fk_name]).first()
-                input_table = input_table.drop(picked_columns, axis=1)
+                input_table = self.replace_recurred_with_fk(fk_name, input_table, mylist, picked_columns)
 
             # Add the connection to a list
             self.connections.append(('table_' + str(level) + '_' + str(base_index), fk_name,
@@ -163,9 +170,7 @@ class Divider:
             self.random_shrink(recurred_table, level + 1)
 
         # Reset the index and set FK columns as normal columns
-        input_table = input_table.reset_index()
-        input_table.set_index(base_index_cols, inplace=True)
-        self.result.append((level, base_index, input_table))
+        self.revert_input_table_index(base_index, base_index_cols, input_table, level)
 
     def random_same_pk_fk(self, input_table, level, onehot=0, overlap_r=0):
         """
@@ -196,9 +201,7 @@ class Divider:
                                                                                                        level)
 
             # Add new FK and remove columns associated with it
-            input_table.loc[:, fk_name] = mylist
-            input_table = input_table.groupby(input_table.index.names + [fk_name]).first()
-            input_table = input_table.drop(picked_columns, axis=1)
+            input_table = self.replace_recurred_with_fk(fk_name, input_table, mylist, picked_columns)
 
             # Add the connection to a list
             self.connections.append(('table_' + str(level) + '_' + str(base_index), fk_name,
@@ -208,7 +211,7 @@ class Divider:
             if len(recurred_table.columns) == 1:
                 # Check if you need to apply oneHotEncoding
                 if onehot > 0 and len(recurred_table[recurred_table.columns[0]].unique()) <= onehot\
-                        and recurred_table[recurred_table.columns[0]].isnull().values.any() is False:
+                        and not recurred_table[recurred_table.columns[0]].isnull().values.any():
                     # Apply the onehot encoding
                     recurred_table = self.apply_onehot_encoding(pk_name, mylist, recurred_table)
 
@@ -226,9 +229,25 @@ class Divider:
             self.random_same_pk_fk(recurred_table, level + 1, onehot=onehot, overlap_r=overlap_r)
 
         # Reset the index and set FK columns as normal columns
-        input_table = input_table.reset_index()
-        input_table.set_index(base_index_cols, inplace=True)
-        self.result.append((level, base_index, input_table))
+        self.revert_input_table_index(base_index, base_index_cols, input_table, level)
+
+    @staticmethod
+    def replace_recurred_with_fk(fk_name, input_table, mylist, picked_columns):
+        """
+        Move FK_column to the index of input table
+
+        fk_name - foreign key column name
+        input_table - table to add column to index
+        mylist - list of foreign key column values
+        picked_columns - drop columns associated with the FK
+
+        returns input table
+        """
+
+        input_table.loc[:, fk_name] = mylist
+        input_table = input_table.groupby(input_table.index.names + [fk_name]).first()
+        input_table = input_table.drop(picked_columns, axis=1)
+        return input_table
 
     def sample_and_create_recurred(self, input_table, level):
         """
