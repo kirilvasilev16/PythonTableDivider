@@ -92,8 +92,8 @@ class Divider:
             corr = corr.drop(corr_columns, axis=1)
 
             # Add the connection to a list
-            self.connections.append(('table_' + str(level) + '_' + str(base_index), fk_name,
-                                     'table_' + str(level + 1) + '_' + str(self.index), pk_name))
+            self.connections.append((f"table_{level}_{base_index}.csv", fk_name,
+                                     f"table_{level + 1}_{self.index}.csv", pk_name))
 
             # Apply clustering recursively
             self.correlation(recurred_table, new_important, level + 1)
@@ -159,8 +159,8 @@ class Divider:
                 input_table = self.replace_recurred_with_fk(fk_name, input_table, mylist, picked_columns)
 
             # Add the connection to a list
-            self.connections.append(('table_' + str(level) + '_' + str(base_index), fk_name,
-                                     'table_' + str(level + 1) + '_' + str(self.index), pk_name))
+            self.connections.append((f"table_{level}_{base_index}.csv", fk_name,
+                                     f"table_{level + 1}_{self.index}.csv", pk_name))
 
             if len(recurred_table.columns) == 1:
                 self.result.append((level + 1, self.index, recurred_table))
@@ -204,8 +204,8 @@ class Divider:
             input_table = self.replace_recurred_with_fk(fk_name, input_table, mylist, picked_columns)
 
             # Add the connection to a list
-            self.connections.append(('table_' + str(level) + '_' + str(base_index), fk_name,
-                                     'table_' + str(level + 1) + '_' + str(self.index), pk_name))
+            self.connections.append((f"table_{level}_{base_index}.csv", fk_name,
+                                     f"table_{level + 1}_{self.index}.csv", pk_name))
 
             # Append new FK table to result list
             if len(recurred_table.columns) == 1:
@@ -363,7 +363,7 @@ class Divider:
         # Iterate over tables and fill data
         for (el, col, table) in self.result:
             # Add tables to set
-            all_tables.append((str('table_' + str(el) + '_' + str(col)), table.index.names))
+            all_tables.append((f"table_{el}_{col}.csv", table.index.names))
 
         # Save connections to file
         np.savetxt(self.path + "/connections.csv", self.connections, delimiter=',', fmt='%s')
@@ -394,7 +394,7 @@ class Divider:
         """
         read_tables_content = dict()
         for [table, pk] in read_tables:
-            read_tables_content[table] = pd.read_csv(self.path + '/' + table + '.csv', index_col=pk)
+            read_tables_content[table] = pd.read_csv(self.path + '/' + table, index_col=pk)
         return read_tables_content
 
     def read_tables_connections(self):
