@@ -92,8 +92,10 @@ class Divider:
             corr = corr.drop(corr_columns, axis=1)
 
             # Add the connection to a list
-            self.connections.append((f"table_{level}_{base_index}.csv", fk_name,
-                                     f"table_{level + 1}_{self.index}.csv", pk_name))
+            self.connections.append({"fk_table" : f"table_{level}_{base_index}.csv",
+                                     "fk_column": fk_name,
+                                     "pk_table" : f"table_{level + 1}_{self.index}.csv",
+                                     "pk_column": pk_name})
 
             # Apply clustering recursively
             self.correlation(recurred_table, new_important, level + 1)
@@ -159,8 +161,10 @@ class Divider:
                 input_table = self.replace_recurred_with_fk(fk_name, input_table, mylist, picked_columns)
 
             # Add the connection to a list
-            self.connections.append((f"table_{level}_{base_index}.csv", fk_name,
-                                     f"table_{level + 1}_{self.index}.csv", pk_name))
+            self.connections.append({"fk_table": f"table_{level}_{base_index}.csv",
+                                     "fk_column": fk_name,
+                                     "pk_table": f"table_{level + 1}_{self.index}.csv",
+                                     "pk_column": pk_name})
 
             if len(recurred_table.columns) == 1:
                 self.result.append((level + 1, self.index, recurred_table))
@@ -204,8 +208,10 @@ class Divider:
             input_table = self.replace_recurred_with_fk(fk_name, input_table, mylist, picked_columns)
 
             # Add the connection to a list
-            self.connections.append((f"table_{level}_{base_index}.csv", fk_name,
-                                     f"table_{level + 1}_{self.index}.csv", pk_name))
+            self.connections.append({"fk_table": f"table_{level}_{base_index}.csv",
+                                     "fk_column": fk_name,
+                                     "pk_table": f"table_{level + 1}_{self.index}.csv",
+                                     "pk_column": pk_name})
 
             # Append new FK table to result list
             if len(recurred_table.columns) == 1:
@@ -295,8 +301,10 @@ class Divider:
             # input_table = self.replace_recurred_with_fk(fk_name, input_table, mylist, picked_columns)
 
             # Add the connection to a list
-            self.connections.append((f"table_{level}_{base_index}.csv", fk_name,
-                                     f"table_{level + 1}_{self.index}.csv", pk_name))
+            self.connections.append({"fk_table": f"table_{level}_{base_index}.csv",
+                                     "fk_column": fk_name,
+                                     "pk_table": f"table_{level + 1}_{self.index}.csv",
+                                     "pk_column": pk_name})
 
             # Append new FK table to result list
             if len(recurred_table.columns) <= k:
@@ -453,7 +461,7 @@ class Divider:
             all_tables.append((f"table_{el}_{col}.csv", table.index.names))
 
         # Save connections to file
-        np.savetxt(self.path + "/connections.csv", self.connections, delimiter=',', fmt='%s')
+        pd.DataFrame(self.connections).to_csv('output/connections.csv', index=False)
 
         # Save tables names with their PK to file
         all_tables = json.dumps(all_tables)
@@ -542,7 +550,7 @@ class Divider:
         # Read table contents
         read_tables_contents = self.read_tables_contents(read_tables=read_tables)
         # Read table connections
-        read_tables_connections = self.read_tables_connections()
+        read_tables_connections = self.read_tables_connections()[1:]
 
         # Verify correct table division by joining all tables and comparing to original
         # The method can only be used if oneHotEncoding and column overlaps are not used
