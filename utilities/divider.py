@@ -231,6 +231,90 @@ class Divider:
         # Reset the index and set FK columns as normal columns
         self.revert_input_table_index(base_index, base_index_cols, input_table, level)
 
+    def random_tree_structure(self, input_table, level, k):
+        """
+        Recursively cluster randomly the columns
+
+        input_table - table to apply the clustering on
+        level - level of recursion
+        """
+
+        input_table = input_table.copy()
+
+        # Return if no columns
+        if len(input_table.columns) <= 1:
+            return
+
+        # Set up base table variables
+        base_index = self.index
+        self.index += 1
+        base_index_cols = input_table.index.names
+
+        # Apply clustering for every cluster of columns
+        while len(input_table.columns) > 0:
+
+            # Initialize recurred table and corresponding fields
+            self.index += 1
+
+            # Randomly pick n_splits columns
+            if len(input_table.columns) > 1:
+                picked_columns = input_table.sample(n=np.random.randint(min(k, len(input_table.columns)-1), len(input_table.columns)),
+                                                    axis='columns').columns
+            else:
+                picked_columns = input_table.columns
+
+            # return self.create_recurred(input_table, level, mylist, picked_columns)
+            # pk_name = 'PK_' + str(level + 1) + '_' + str(self.index)
+            # fk_name = 'FK_' + str(level + 1) + '_' + str(self.index)
+            # # Add new PK
+            recurred_table = input_table[picked_columns]
+
+            best = 0
+            for column in recurred_table.columns:
+                if recurred_table[column].nunique() > best:
+                    best = recurred_table[column].nunique()
+                    pk_name = column
+                    fk_name = column
+
+            if best != len(input_table):
+                mylist = np.array(range(0, len(input_table)))
+                random.shuffle(mylist)
+
+                pk_name = 'Key_' + str(level + 1) + '_' + str(self.index)
+                fk_name = 'Key_' + str(level + 1) + '_' + str(self.index)
+                input_table.loc[:, pk_name] = mylist
+                recurred_table.loc[:, pk_name] = mylist
+
+            recurred_table.set_index(pk_name, inplace=True)
+            input_table = input_table.groupby(input_table.index.names + [fk_name]).first()
+
+            filtered_columns = list(picked_columns)
+            if fk_name in filtered_columns:
+                filtered_columns.remove(fk_name)
+            input_table = input_table.drop(filtered_columns, axis=1)
+            # input_table = self.replace_recurred_with_fk(fk_name, input_table, mylist, picked_columns)
+
+            # Add the connection to a list
+            self.connections.append((f"table_{level}_{base_index}.csv", fk_name,
+                                     f"table_{level + 1}_{self.index}.csv", pk_name))
+
+            # Append new FK table to result list
+            if len(recurred_table.columns) <= k:
+
+                # Append single-column table to result
+                self.result.append((level + 1, self.index, recurred_table))
+                continue
+
+            # Apply clustering recursively on smaller table
+            self.random_tree_structure(recurred_table, level + 1, k)
+
+        # Reset the index and set FK columns as normal columns
+        # input_table = input_table.reset_index()
+        # input_table.set_index(base_index_cols, inplace=True)
+        # self.result.append((level, base_index, input_table))
+        self.revert_input_table_index(base_index, base_index_cols, input_table, level)
+
+
     @staticmethod
     def replace_recurred_with_fk(fk_name, input_table, mylist, picked_columns):
         """
@@ -322,7 +406,7 @@ class Divider:
         recurred_table.set_index(pk_name, inplace=True)
         return recurred_table
 
-    def divide(self, strategy, onehot=False, overlap_r=0):
+    def divide(self, strategy, onehot=False, overlap_r=0, minimum_columns=1):
         """
         Function used to divide the table
 
@@ -347,6 +431,9 @@ class Divider:
             self.random_shrink(input_table, 0)
         elif strategy == 'correlation':
             self.correlation(self.input_table, self.important_column, 0)
+        elif strategy == 'random_tree':
+            input_table = self.input_table.groupby(self.input_table.index.names + [self.important_column]).first()
+            self.random_tree_structure(input_table, 0, minimum_columns)
 
         # Sort result by recursion level and index
         self.result.sort(key=lambda x: (x[0], x[1]))

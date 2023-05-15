@@ -9,6 +9,7 @@ The project contains the code to vertically split a table given the next strateg
   - Randomized division with shrinking of table sizes
   - Randomized division with onehot encoding for leaf table columns
   - Randomized division with column overlapping over leaf tables
+  - Randomized division with the possibility to use features are Primary Key - Foreign Key columns
 
 ### Prerequisites 
 Python 3.8 
@@ -50,6 +51,8 @@ dv.divide(strategy='random', overlap_r=0.5)
 dv.divide(strategy='random', onehot=4, overlap_r=0.5)
 # Apply random division with table shrinking
 dv.divide(strategy='shrink')
+# Apply random tree division
+dv.divide(strategy="random_tree", minimum_columns=4)
 
 # Apply all division strategies above simultaneously in 1 LOC
 dv.divide_all(overlap_r=0.5, onehot=4)
