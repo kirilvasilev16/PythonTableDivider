@@ -103,6 +103,83 @@ class Divider:
         # Reset the index and set FK columns as normal columns
         self.revert_input_table_index(base_index, base_index_cols, input_table, level)
 
+    def reverse_correlation(self, input_table, level, k):
+        """
+        Recursively cluster uniformly the columns based on correlation
+
+        input_table - table to apply the clustering on
+        level - level of recursion
+        """
+
+        input_table = input_table.copy()
+
+        # Return if no columns
+        if len(input_table.columns) <= 1:
+            return
+
+        # Set up base table variables
+        base_index = self.index
+        self.index += 1
+        base_index_cols = input_table.index.names
+
+        # Order the tables best on scores
+        columns = input_table.columns
+        minimum_number = int(np.floor(len(list(input_table.columns)) / k))
+        number_of_tables = np.random.randint(1, minimum_number+1)
+
+        table = 0
+        i = 0
+        recurred_columns = [[] for i in range(0, number_of_tables)]
+        while i < len(columns):
+            recurred_columns[table].append(columns[i])
+            table += 1
+            i += 1
+            if table == number_of_tables:
+                table = 0
+
+        # Apply clustering for every cluster of columns
+        for recurrend_column in recurred_columns:
+
+            # Initialize recurred table and corresponding fields
+            self.index += 1
+
+            recurred_table = input_table[recurrend_column]
+
+            best = recurred_table[recurrend_column[0]].nunique()
+            if best != len(input_table):
+                mylist = np.array(range(0, len(input_table)))
+                random.shuffle(mylist)
+
+                pk_name = 'Key_' + str(level + 1) + '_' + str(self.index)
+                fk_name = 'Key_' + str(level + 1) + '_' + str(self.index)
+                input_table.loc[:, pk_name] = mylist
+                recurred_table.loc[:, pk_name] = mylist
+
+            recurred_table.set_index(pk_name, inplace=True)
+            input_table = input_table.groupby(input_table.index.names + [fk_name]).first()
+
+            filtered_columns = list(recurrend_column)
+            if fk_name in filtered_columns:
+                filtered_columns.remove(fk_name)
+            input_table = input_table.drop(filtered_columns, axis=1)
+
+            # Add the connection to a list
+            self.connections.append({"fk_table": f"table_{level}_{base_index}.csv",
+                                     "fk_column": fk_name,
+                                     "pk_table": f"table_{level + 1}_{self.index}.csv",
+                                     "pk_column": pk_name})
+
+            # Append new FK table to result list
+            if len(recurred_table.columns) <= k:
+                # Append single-column table to result
+                self.result.append((level + 1, self.index, recurred_table))
+                continue
+
+            # Apply clustering recursively on smaller table
+            self.random_tree_structure(recurred_table, level + 1, k)
+
+        self.revert_input_table_index(base_index, base_index_cols, input_table, level)
+
     def revert_input_table_index(self, base_index, base_index_cols, input_table, level):
         """
         Revert the input_table index to previous state
@@ -442,6 +519,11 @@ class Divider:
         elif strategy == 'random_tree':
             input_table = self.input_table.groupby(self.input_table.index.names + [self.important_column]).first()
             self.random_tree_structure(input_table, 0, minimum_columns)
+        elif strategy == 'reverse_correlation':
+            ix = self.input_table.corr().sort_values(self.important_column, ascending=False).index
+            self.input_table = self.input_table.loc[:, ix]
+            input_table = self.input_table.groupby(self.input_table.index.names + [self.important_column]).first()
+            self.reverse_correlation(input_table, 0, minimum_columns)
 
         # Sort result by recursion level and index
         self.result.sort(key=lambda x: (x[0], x[1]))
@@ -589,5 +671,13 @@ class Divider:
         print("Correlation based")
         self.path = path + "/correlation"
         self.divide("correlation")
+
+        print("Random tree based")
+        self.path = path + "/random_tree"
+        self.divide("random_tree")
+
+        print("Reverse orrelation based")
+        self.path = path + "/reverse_correlation"
+        self.divide("reverse_correlation")
 
         self.path = path

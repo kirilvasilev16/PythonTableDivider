@@ -53,6 +53,8 @@ dv.divide(strategy='random', onehot=4, overlap_r=0.5)
 dv.divide(strategy='shrink')
 # Apply random tree division
 dv.divide(strategy="random_tree", minimum_columns=4)
+# Apply reverse correlation division
+dv.divide(strategy="reverse_correlation", minimum_columns=4)
 
 # Apply all division strategies above simultaneously in 1 LOC
 dv.divide_all(overlap_r=0.5, onehot=4)
@@ -86,3 +88,5 @@ If `divide` method is used, in the specified `output` folder, no subfolders will
     - The division is conducted similarly to the vanilla random division with the difference that it is possible to have multiple columns appearing in multiple of the smaller tables. When we apply the table division, we randomly sample columns from the initial table and we return `overlap_r` ratio of them to it. That means we sample with replacement. As a result, the same columns can get sampled again and appear in multiple of the child tables.
   - Random Tree Division
     - The division is conducted similarly to the vanilla random division with the exception that the algorithm will try to make use of columns with all unique values to make use of them as PK-FK columns. If none of the columns meet this criteria, then artificial PK-FK columns will be created. Note that there is also a hyperparameter `minimum_columns`, which can set the minimum size of resulting sub-tables. Note that there may still be 1 remaining table with less than `minimum_columns` columns. Furthermore, with the current implementation, the divider will not be verifiable due to the implementation of the verifier. Therefore, you may get `False` as last output, however, the algorithm will still be running the random division correctly.
+  - Reverse Correlation Division
+    - This division first sorts all the columns based on correlation and tries to distribute them through the subtables in the most uniform way. For example, if we have a list of columns from most correlated to least correlated `[x1, x2, x3, x4, x5, x6, x7, x8]`, then they will be split in the next level as follows: `[x3, x5, x8]`, `[x2, x4, x7]`, and `[x1, x6]`, where `x8`, `x7`, and `x6` will be primary keys respectively. This strategy will continue until the sub-tables have at least `minimum_columns` number of columns. Note that there may still be 1 remaining table with less than `minimum_columns` columns. Furthermore, with the current implementation, the divider will not be verifiable due to the implementation of the verifier. Therefore, you may get `False` as last output, however, the algorithm will still be running the random division correctly.
