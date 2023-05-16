@@ -154,6 +154,9 @@ class Divider:
                 fk_name = 'Key_' + str(level + 1) + '_' + str(self.index)
                 input_table.loc[:, pk_name] = mylist
                 recurred_table.loc[:, pk_name] = mylist
+            else:
+                pk_name = recurrend_column[0]
+                fk_name = recurrend_column[0]
 
             recurred_table.set_index(pk_name, inplace=True)
             input_table = input_table.groupby(input_table.index.names + [fk_name]).first()
