@@ -173,7 +173,7 @@ class Divider:
                                      "pk_column": pk_name})
 
             # Append new FK table to result list
-            if len(recurred_table.columns) <= k:
+            if len(recurred_table.columns) <= k or len(recurred_columns) == 1:
                 # Append single-column table to result
                 self.result.append((level + 1, self.index, recurred_table))
                 continue
@@ -181,6 +181,95 @@ class Divider:
             # Apply clustering recursively on smaller table
             self.random_tree_structure(recurred_table, level + 1, k)
 
+        self.revert_input_table_index(base_index, base_index_cols, input_table, level)
+
+    def short_reverse_correlation(self, input_table, level, nr_child, min_nr_cols):
+        """
+        Recursively cluster uniformly the columns based on correlation
+        The strategy applied here will aim to create shorter join paths with less
+        synthetic join keys
+
+        input_table - table to apply the clustering on
+        level - level of recursion
+        """
+
+        input_table = input_table.copy()
+
+        # Return if no columns
+        if len(input_table.columns) <= 1:
+            return
+
+        # Set up base table variables
+        base_index = self.index
+        # self.index += 1
+        base_index_cols = input_table.index.names
+
+        # Order the tables best on scores
+        columns = input_table.columns
+
+        table = 0
+        i = 0
+        recurred_columns = [[] for _ in range(0, nr_child)]
+        while i < len(columns):
+            recurred_columns[table].append(columns[i])
+            table += 1
+            i += 1
+            table %= nr_child
+
+        # Investigate potential PKs
+        recurred_pks = [None for _ in range(0, nr_child)]
+        for i, recurred_column in enumerate(recurred_columns):
+            recurred_table = input_table[recurred_column]
+            for column in recurred_table.columns:
+                if recurred_table[column].nunique() == len(input_table):
+                    recurred_pks[i] = column
+
+        # See if any PK candidate exists
+        num_pks = sum([1 for pk in recurred_pks if pk is not None])
+        if num_pks == 0:
+            mylist = np.array(range(0, len(input_table)))
+            central_pk = 'Key_' + str(level + 1) + '_' + str(self.index)
+            input_table.loc[:, central_pk] = mylist
+
+            # Create all connections
+            for i in range(1, nr_child + 1):
+                for j in range(1, nr_child + 1):
+                    if i < j:
+                        self.connections.append({"fk_table": f"table_{level + 1}_{self.index + 1 + i}.csv",
+                                                 "fk_column": central_pk,
+                                                 "pk_table": f"table_{level + 1}_{self.index + 1 + j}.csv",
+                                                 "pk_column": central_pk})
+        else:
+            central_pk = [pk for pk in recurred_pks if pk is not None][-1]
+
+        recurred_pks = [central_pk for pk in recurred_pks if pk is None]
+
+        # Add PK name to all columns
+        for i, recurred_column in enumerate(recurred_columns):
+            if recurred_pks[i] not in recurred_column:
+                recurred_column.append(recurred_pks[i])
+
+
+
+        # Apply clustering for every cluster of columns
+        for i, recurred_column in enumerate(recurred_columns):
+
+            # Initialize recurred table and corresponding fields
+            self.index += 1
+
+            recurred_table = input_table[recurred_column]
+            recurred_table.set_index(recurred_pks[i], inplace=True)
+
+            # Append new FK table to result list
+            if len(recurred_table.columns) / min_nr_cols < nr_child:
+                # Append single-column table to result
+                self.result.append((level + 1, self.index, recurred_table))
+                continue
+
+            # Apply clustering recursively on smaller table
+            self.short_reverse_correlation(recurred_table, level + 1, nr_child, min_nr_cols)
+
+        input_table = input_table[list(set(recurred_pks))]
         self.revert_input_table_index(base_index, base_index_cols, input_table, level)
 
     def revert_input_table_index(self, base_index, base_index_cols, input_table, level):
@@ -494,7 +583,7 @@ class Divider:
         recurred_table.set_index(pk_name, inplace=True)
         return recurred_table
 
-    def divide(self, strategy, onehot=False, overlap_r=0, minimum_columns=1):
+    def divide(self, strategy, onehot=False, overlap_r=0, minimum_columns=1, number_children=3):
         """
         Function used to divide the table
 
@@ -527,6 +616,11 @@ class Divider:
             self.input_table = self.input_table.loc[:, ix]
             input_table = self.input_table.groupby(self.input_table.index.names + [self.important_column]).first()
             self.reverse_correlation(input_table, 0, minimum_columns)
+        elif strategy == 'short_reverse_correlation':
+            ix = self.input_table.corr().sort_values(self.important_column, ascending=False).index
+            self.input_table = self.input_table.loc[:, ix]
+            input_table = self.input_table.groupby(self.input_table.index.names + [self.important_column]).first()
+            self.short_reverse_correlation(input_table, 0, number_children, minimum_columns)
 
         # Sort result by recursion level and index
         self.result.sort(key=lambda x: (x[0], x[1]))
