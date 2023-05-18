@@ -194,90 +194,106 @@ class Divider:
         """
 
         input_table = input_table.copy()
-        stack = [(0, 0, input_table)]
 
-        while len(stack) > 0:
-            level, index, input_table = stack.pop()
+        # Split columns in chunks
+        columns = list(input_table.columns)
+        recurred_columns = [columns[i:i + min_nr_cols] for i in range(0, len(columns), min_nr_cols)]
 
-            if len(input_table.columns) / min_nr_cols < nr_child:
-                continue
+        # Merge last 2 chunks if last one is below min_nr_cols length
+        if len(recurred_columns[-1]) < min_nr_cols:
+            recurred_columns[-2].extend(recurred_columns[-1])
+            recurred_columns.pop()
 
-            # Set up base table variables
-            base_index_cols = input_table.index.names
-            base_index = index
-
-            # Order the tables best on scores
-            columns = input_table.columns
-            table = 0
-            i = 0
-            recurred_columns = [[] for _ in range(0, nr_child)]
-            while i < len(columns):
-                recurred_columns[table].append(columns[i])
-                table += 1
-                i += 1
-                table %= nr_child
-
-            # Investigate potential PKs
-            recurred_pks = [None for _ in range(0, nr_child)]
-            for i, recurred_column in enumerate(recurred_columns):
-                recurred_table = input_table[recurred_column]
-                for column in recurred_table.columns:
-                    if recurred_table[column].nunique() == len(input_table):
-                        recurred_pks[i] = column
-
+        # Calculate the level for each sub-table
+        pk = None
+        for column in recurred_columns[0]:
+            if input_table[column].nunique() == len(input_table):
+                pk = column
+                break
+        if pk == None:
+            mylist = np.array(range(0, len(input_table)))
+            pk = f'Key_{0}_{0}'
+            input_table.loc[:, pk] = mylist
+        temp_recurred = [(self.index, 0, -1, recurred_columns[0], pk)]
+        counter = 0
+        parent_counter = 0
+        multiplier = 1
+        parent_index = 0
+        for recurred_column in recurred_columns[1:]:
+            self.index += 1
             # See if any PK candidate exists
-            temp_connections = []
-            num_pks = sum([1 for pk in recurred_pks if pk is not None])
-            if num_pks == 0:
-                # Create fake primary key column if not
+            pk = None
+            for column in recurred_column:
+                if input_table[column].nunique() == len(input_table):
+                    pk = column
+                    break
+            if pk == None:
                 mylist = np.array(range(0, len(input_table)))
-                central_pk = 'Key_' + str(self.index)
-                input_table.loc[:, central_pk] = mylist
+                pk = f'Key_{multiplier}_{self.index}'
+                input_table.loc[:, pk] = mylist
 
-                # Create all connections
-                for i in range(1, nr_child + 1):
-                    for j in range(1, nr_child + 1):
-                        if i < j:
-                            temp_connections.append({"fk_table": f"table_{level + 1}_{self.index + i}.csv",
-                                                     "fk_column": central_pk,
-                                                     "pk_table": f"table_{level + 1}_{self.index + j}.csv",
-                                                     "pk_column": central_pk})
+            # Append unique index, level, index of parent, current columns, current pk
+            temp_recurred.append((self.index, multiplier, parent_index, recurred_column, pk))
+            counter += 1
+            parent_counter += 1
+            if counter >= nr_child ** multiplier:
+                counter = 0
+                multiplier += 1
+                parent_index = 0
+                parent_counter = 0
+            if parent_counter >= nr_child:
+                parent_counter = 0
+                parent_index += 1
+
+        # Group tables per recursion level
+        recurred_columns = temp_recurred
+        grouped_per_level = []
+        for recurred_column in recurred_columns:
+            if recurred_column[1] == len(grouped_per_level):
+                grouped_per_level.append([recurred_column])
             else:
-                central_pk = [pk for pk in recurred_pks if pk is not None][-1]
+                grouped_per_level[recurred_column[1]].append(recurred_column)
 
-            # Impute missing PKs
-            recurred_pks = [(central_pk if pk is None else pk) for pk in recurred_pks]
+        # Create resulting tables
+        indexes = dict()
+        for i, group in enumerate(grouped_per_level):
+            for element in group:
+                index, level, parent_index, columns, pk = element
+                if i != 0:
+                    parent_pk = grouped_per_level[level - 1][parent_index][4]
+                    if parent_pk not in columns and i != len(grouped_per_level) - 1:
+                        columns.append(pk)
+                    recurred_table = input_table[columns]
+                    recurred_table.index = input_table[parent_pk]
+                    self.result.append((level, index, recurred_table))
+                    self.connections.append({"fk_table": f"table_{level - 1}_{grouped_per_level[level - 1][parent_index][0]}.csv",
+                                                     "fk_column": parent_pk,
+                                                     "pk_table": f"table_{level}_{index}.csv",
+                                                     "pk_column": parent_pk})
+                    # Store same pk connections
+                    if parent_pk not in indexes:
+                        indexes[parent_pk] = [(level, index)]
+                    else:
+                        indexes[parent_pk].append((level, index))
+                else:
+                    # Base table has no parents
+                    if pk not in columns:
+                        columns.append(pk)
+                    recurred_table = input_table[columns]
+                    self.result.append((level, index, recurred_table))
 
-            # Add PK name to all columns
-            for i, recurred_column in enumerate(recurred_columns):
-                if recurred_pks[i] not in recurred_column:
-                    recurred_column.append(recurred_pks[i])
-
-            # Apply clustering for every cluster of columns
-            for i, recurred_column in enumerate(recurred_columns):
-
-                # Initialize recurred table and corresponding fields
-                self.index += 1
-
-                recurred_table = input_table[recurred_column]
-                recurred_table.set_index(recurred_pks[i], inplace=True)
-
-                # Append new FK table to result list
-                if len(recurred_table.columns) / min_nr_cols < nr_child:
-                    # Append single-column table to result
-                    self.result.append((level+1, self.index, recurred_table))
-
-                self.connections.append({"fk_table": f"table_{level}_{base_index}.csv",
-                                         "fk_column": recurred_pks[i],
-                                         "pk_table": f"table_{level + 1}_{self.index}.csv",
-                                         "pk_column": recurred_pks[i]})
-
-                stack.append((level+1, self.index, recurred_table))
-
-            self.connections.extend(temp_connections)
-
-            input_table = input_table[list(set(recurred_pks))]
-            self.revert_input_table_index(base_index, base_index_cols, input_table, level)
+        # Add relations between tables with same PKs
+        for index in indexes.keys():
+            same = indexes[index]
+            for i in range(0, len(same)):
+                for j in range(0, len(same)):
+                    if i < j:
+                        left = same[i]
+                        right = same[j]
+                        self.connections.append({"fk_table": f"table_{left[0]}_{left[1]}.csv",
+                                                 "fk_column": index,
+                                                 "pk_table": f"table_{right[0]}_{right[1]}.csv",
+                                                 "pk_column": index})
 
     def revert_input_table_index(self, base_index, base_index_cols, input_table, level):
         """
@@ -655,7 +671,8 @@ class Divider:
             json.dump(all_tables, outfile)
 
         # Verify correctness
-        self.verify()
+        if strategy != 'short_reverse_correlation':
+            self.verify()
 
     def read_tables(self):
         """
@@ -780,8 +797,12 @@ class Divider:
         self.path = path + "/random_tree"
         self.divide("random_tree")
 
-        print("Reverse orrelation based")
+        print("Reverse correlation based")
         self.path = path + "/reverse_correlation"
         self.divide("reverse_correlation")
+
+        print("Reverse short correlation based")
+        self.path = path + "/short_reverse_correlation"
+        self.divide("short_reverse_correlation")
 
         self.path = path

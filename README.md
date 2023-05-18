@@ -55,6 +55,8 @@ dv.divide(strategy='shrink')
 dv.divide(strategy="random_tree", minimum_columns=4)
 # Apply reverse correlation division
 dv.divide(strategy="reverse_correlation", minimum_columns=4)
+# Apply short reverse correlation division
+dv.divide(strategy="short_reverse_correlation", number_children=3, minimum_columns=4)
 
 # Apply all division strategies above simultaneously in 1 LOC
 dv.divide_all(overlap_r=0.5, onehot=4)
@@ -90,3 +92,14 @@ If `divide` method is used, in the specified `output` folder, no subfolders will
     - The division is conducted similarly to the vanilla random division with the exception that the algorithm will try to make use of columns with all unique values to make use of them as PK-FK columns. If none of the columns meet this criteria, then artificial PK-FK columns will be created. Note that there is also a hyperparameter `minimum_columns`, which can set the minimum size of resulting sub-tables. Note that there may still be 1 remaining table with less than `minimum_columns` columns. Furthermore, with the current implementation, the divider will not be verifiable due to the implementation of the verifier. Therefore, you may get `False` as last output, however, the algorithm will still be running the random division correctly.
   - Reverse Correlation Division
     - This division first sorts all the columns based on correlation and tries to distribute them through the subtables in the most uniform way. For example, if we have a list of columns from most correlated to least correlated `[x1, x2, x3, x4, x5, x6, x7, x8]`, then they will be split in the next level as follows: `[x3, x5, x8]`, `[x2, x4, x7]`, and `[x1, x6]`, where `x8`, `x7`, and `x6` will be primary keys respectively. This strategy will continue until the sub-tables have at least `minimum_columns` number of columns. Note that there may still be 1 remaining table with less than `minimum_columns` columns. Furthermore, with the current implementation, the divider will not be verifiable due to the implementation of the verifier. Therefore, you may get `False` as last output, however, the algorithm will still be running the random division correctly.
+  - Short Reverse Correlation Division
+    - This division strategy is quite different from the aforementioned division strategies. It works as follows:
+      1. All features are sorted based on correlation from most correlated to least correlated: `[x1, x2, x3, x4, x5, x6, x7, x8]`;
+      2. Hyperparameter `minimum_columns=2` splits the list in chunks `[[x1, x2], [x3, x4], [x5, x6], [x7, x8]]`;
+      3. Hyperparameter `number_children=2` constructs the tree between the tables. For instance, table `[x1, x2]` shall become root table with children `[x3, x4]` and `[x5, x6]`, while `[x3, x4]` will become root for `[x7, x8]`;
+      4. Primary keys are either assigned from existing columns or synthetic ones are created if no features have unique values;
+      5. The assigned primary keys are used to create connections between the subtables;
+      6. Note that both subtables `[x3, x4]` and `[x5, x6]` can be joined together since they have the same PK. However, `[x5, x6]` and `[x7, x8]` will not be joinable, because `[x5, x6]` will inherit the assigned primary key of its parent table;
+    - The division strategy is considered "short", since it allows subtables to join one another without the need to be directly joined to their parent table;
+    - This division strategy will aim to create longer join paths for highly correlated features and thus put them further away from the base table;.
+  
