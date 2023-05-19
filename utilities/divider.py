@@ -17,13 +17,14 @@ class Divider:
     Table divider class
     """
 
-    def __init__(self, input_table, important_column, path):
+    def __init__(self, input_table, important_column, path, table_has_no_index=False):
         """
         Constructor for divider
 
         input_table - table to apply division on
         important_column - y_column used for predictions
         path - name of output folder to save data
+        table_has_no_index - if the provided table has no index, a synthetic one can be made internally
         """
         self.result = []
         self.input_table = input_table.copy()
@@ -31,6 +32,9 @@ class Divider:
         self.connections = []
         self.index = 0
         self.path = path
+        self.table_has_no_index = table_has_no_index
+        if table_has_no_index:
+            self.input_table.index.name = 'synthetic_primary_key'
 
     def correlation(self, input_table, important_column, level):
         """
@@ -620,7 +624,7 @@ class Divider:
         os.makedirs(self.path, exist_ok=True)
 
         # Initialise fresh result and connections lists
-        self.__init__(self.input_table, self.important_column, self.path)
+        self.__init__(self.input_table, self.important_column, self.path, self.table_has_no_index)
 
         # Pick strategy
         if strategy == 'random':
@@ -673,6 +677,10 @@ class Divider:
         # Verify correctness
         if strategy != 'short_reverse_correlation':
             self.verify()
+
+        if self.table_has_no_index:
+            base_table = pd.read_csv(self.path + '/table_0_0.csv')
+            base_table.drop(['synthetic_primary_key'], axis=1).to_csv(self.path + '/table_0_0.csv', index=False)
 
     def read_tables(self):
         """

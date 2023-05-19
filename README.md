@@ -37,7 +37,7 @@ train_data = pd.read_csv(train_csv, index_col='PassengerId')
 y_column = 'Survived'
 
 # Initialise the divider
-dv = Divider(train_data, y_column, path='output')
+dv = Divider(train_data, y_column, path='output', table_has_no_index=False)
 
 # Apply division by correlation
 dv.divide(strategy="correlation")
