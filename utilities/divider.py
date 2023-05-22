@@ -216,6 +216,7 @@ class Divider:
                 break
         if pk == None:
             mylist = np.array(range(0, len(input_table)))
+            random.shuffle(mylist)
             pk = f'Key_{0}_{0}'
             input_table.loc[:, pk] = mylist
         temp_recurred = [(self.index, 0, -1, recurred_columns[0], pk)]
@@ -233,6 +234,7 @@ class Divider:
                     break
             if pk == None:
                 mylist = np.array(range(0, len(input_table)))
+                random.shuffle(mylist)
                 pk = f'Key_{multiplier}_{self.index}'
                 input_table.loc[:, pk] = mylist
 
