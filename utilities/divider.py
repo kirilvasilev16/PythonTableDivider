@@ -646,7 +646,7 @@ class Divider:
             input_table = self.input_table.groupby(self.input_table.index.names + [self.important_column]).first()
             self.reverse_correlation(input_table, 0, minimum_columns)
         elif strategy == 'short_reverse_correlation':
-            ix = self.input_table.corr().sort_values(self.important_column, ascending=False).index
+            ix = abs(self.input_table.corr()).sort_values(self.important_column)[self.important_column].index
             self.input_table = self.input_table.loc[:, ix]
             input_table = self.input_table.groupby(self.input_table.index.names + [self.important_column]).first()
             self.short_reverse_correlation(input_table, 0, number_children, minimum_columns)
